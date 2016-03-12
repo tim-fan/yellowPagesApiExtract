@@ -37,7 +37,6 @@ def awaitQuerySuccess(queryFn):
 			raise RuntimeError('Unhandled API response code ' + responseCode + ', with message: ' + responseMsg)
 	return response
 	
-
 def runQuery(apiUrl, options):
 	buildOptsUrl = lambda options : ('?' + '&'.join([key + '=' + value for (key, value) in options.items()])).replace(' ', '+')
 	url = apiUrl + buildOptsUrl(queryOptions)
@@ -52,7 +51,6 @@ def makeQueryPage(apiUrl, options):
 		return runQuery(apiUrl, options)
 	return queryPage
 
-#print(firstListing.keys())
 def parseListing(listing):
 	#convert from dictionary representation of a listing to a single-row data frame of the chosen fields
 	getEmail  = lambda contacts : [contact['value'] for contact in contacts if contact['type'] == 'EMAIL'][0]
