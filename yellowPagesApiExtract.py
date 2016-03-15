@@ -6,6 +6,8 @@ import json
 import pandas as pd
 import requests
 import time
+import re
+import os
 
 ### CONFIG ###
 
@@ -13,7 +15,7 @@ apiUrl = 'http://api.sensis.com.au/v1/test/search'
 
 queryOptions = {
         'query' : 'electrical contractors',
-        'state' : 'NSW',
+        #'state' : 'SA',
         'rows'  : '50' #API allows at most 50 rows per request
 }
 
@@ -24,23 +26,30 @@ def awaitQuerySuccess(queryFn):
 	#response code of 200 or an unhandled 
 	#reponse code is received
 	querySuccess = False
+	retryTime = 2
 	while not querySuccess:
 		response = queryFn()
-		responseCode = response['code']
-		responseMsg = response['message']
+		
+		responseCode = response.status_code
 		if responseCode == 200 :
 			querySuccess = True
+		elif responseCode == 418:
+
+			print('API error: ' + response.json()['message'])
 		elif responseCode == 403 :
-			print('Hit API limit: ' + responseMsg)
-			time.sleep(10) #hit the API limit. Wait a bit and try again 
+			print('Hit API limit: ' + str(response.status_code))
+			time.sleep(retryTime) #hit the API limit. Wait a bit and try again 
+			retryTime *= 1.5
+			print("Waiting " + "{0:.2f}".format(retryTime/60) + " minutes before retry")
 		else:
-			raise RuntimeError('Unhandled API response code ' + responseCode + ', with message: ' + responseMsg)
-	return response
+			raise RuntimeError('Unhandled API response code ' + str(responseCode) + ', with message: ' + responseMsg)
+	return response.json()
 	
 def runQuery(apiUrl, options):
 	buildOptsUrl = lambda options : ('?' + '&'.join([key + '=' + value for (key, value) in options.items()])).replace(' ', '+')
 	url = apiUrl + buildOptsUrl(queryOptions)
-	response = awaitQuerySuccess(lambda: requests.get(url).json())
+	print("QUERY: " + url)
+	response = awaitQuerySuccess(lambda: requests.get(url))
 	return response
 
 def makeQueryPage(apiUrl, options):
@@ -55,11 +64,20 @@ def parseListing(listing):
 	#convert from dictionary representation of a listing to a single-row data frame of the chosen fields
 	getEmail  = lambda contacts : [contact['value'] for contact in contacts if contact['type'] == 'EMAIL'][0]
 	getUrl    = lambda contacts : [contact['value'] for contact in contacts if contact['type'] == 'URL'][0]
+
+	#test: pull email by regex:
+	extractMatch = lambda match : match.group(0) if match is not None else ''
+	searchForEmail = lambda listing : extractMatch(re.search(r'[\w\.-]+@[\w\.-]+', str(listing)))
+
 	extractionFunctions = 	{
 					'Name'          :	lambda : [listing['name']],
+					'State'		:	lambda : [listing['primaryAddress']['state']],
                                 	'Suburb'        :       lambda : [listing['primaryAddress']['suburb']],
                                 	'Street.Address':	lambda : [listing['primaryAddress']['addressLine']],
-                                	'Email'         :       lambda : getEmail(listing['primaryContacts']),
+                                	'Postcode'	:	lambda : [listing['primaryAddress']['postcode']],
+					'Email'         :       lambda : getEmail(listing['primaryContacts']),
+					'SearchedEmail'	:	lambda : searchForEmail(listing),
+
 					'Url'	        :	lambda : getUrl(listing['primaryContacts'])
 				}
 
@@ -81,30 +99,66 @@ def parseResponse(responseJson):
 	#get data frame from respose:
 	#one row per listing, one column for each field
 	#as selected in 'parseListing'
+	
 	allListings = pd.concat([parseListing(listing) for listing in responseJson['results']])
 	return allListings
 
+#prepare a query function for querying multiple pages
+def queryAllPages(apiUrl, queryOptions):
+	queryPage = makeQueryPage(apiUrl, queryOptions)
+
+	#we're set up to query the api.
+	#first lets find how many pages are available to query:
+	firstQuery = queryPage()
+	if not 'totalPages' in firstQuery.keys():
+		#TODO: management of api response code 418 vs http response codes
+		return None
+
+	numPages = firstQuery['totalPages']
+	print("Number of pages to query: " + str(numPages))
+	
+	if numPages == 0:
+		allResults = None		
+
+	else:
+		#now we know how many queries to run. Run them all:
+		allResults = pd.concat([parseResponse(firstQuery)] + [parseResponse(queryPage(pageNum)) for pageNum in range(2,numPages+1)])
+	
+	return allResults
+
+def setPostcodeOption(postcode, queryOptions):
+	queryOptions['location'] = postcode
+	return queryOptions
 
 ### QUERY SCRIPT ###
 
 #add api key to query options
-queryOptions['key'] = input("Enter your sensis api key: ")
+queryOptions['key'] = os.environ['SENSIS_API_KEY']
 
-#prepare a query function for querying multiple pages
-queryPage = makeQueryPage(apiUrl, queryOptions)
+#loop through all post codes
+postcodeData = pd.read_csv('data/Australian_Post_Codes_Lat_Lon.csv')
+postcodes = [str(pc) for pc in set(postcodeData.postcode.values)]
 
-#we're set up to query the api.
-#first lets find how many pages are available to query:
-firstQuery = queryPage()
-numPages = firstQuery['totalPages']
-print("Number of pages to query: " + str(numPages))
+def queryPostcodeWithOptions(postcode, apiUrl, queryOptions):
+	queryOptions = setPostcodeOption(postcode, queryOptions)
+	return queryAllPages(apiUrl, queryOptions)
 
-#now we know how many queries to run. Run them all:
-allResults = pd.concat([parseResponse(queryPage(pageNum)) for pageNum in range(1,numPages+1)])
+queryPostcode = lambda postcode : queryPostcodeWithOptions(postcode, apiUrl, queryOptions)
+
+allPcResults = queryPostcode(postcodes[0])
+csvName = (queryOptions['query'] + '_' + 'allPostcodes.csv').replace(' ','_')
+
+for postcode in postcodes[1:]:
+	print("Querying for post code: " + str(postcode))
+	pcResults = queryPostcode(postcode)
+	if pcResults is not None:
+		allPcResults = pd.concat([allPcResults, pcResults])
+
+		#in case of crash: save intermediate results
+		allPcResults.to_csv(csvName, index = False)
 
 #finally, save to a .csv file
-csvName = (queryOptions['query'] + '_' + queryOptions['state'] + '.csv').replace(' ','_')
 print("Done! Saving to file: " + csvName)
-allResults.to_csv(csvName, index = False)
+allPcResults.to_csv(csvName, index = False)
 
 #Done!
