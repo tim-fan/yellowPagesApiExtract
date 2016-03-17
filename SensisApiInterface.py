@@ -41,6 +41,53 @@ class SensisInterface(object):
         url = self.apiUrl + buildOptsUrl(self.queryOptions)   
         return url
     
+    def runQuery(self):
+        print("QUERY: " + self.getQueryUrl())
+        response = self.__awaitQuerySuccess()
+        
+    #    #Save query in cache to avoid sending the same api query twice
+    #    queryFile = open('cache/'+buildOptsUrl(queryOptions), 'w')
+    #    queryFile.write(json.dumps(response))
+    #    queryFile.close()
+        return response
+    
+    def parseResponse(self, responseJson):
+        #get data frame from respose:
+        #one row per listing, one column for each field
+        #as selected in 'parseListing'
+        
+        allListings = pd.concat([self.__parseListing(listing) for listing in responseJson['results']])
+        return allListings
+        
+    def queryAllPages(self):
+        #a query function for querying multiple pages
+        
+        def queryPage(pageNumber = 1):
+            print("Extracting page: " + str(pageNumber))
+            self.setPage(pageNumber)
+            return self.runQuery()
+            
+        #we're set up to query the api.
+        #first lets find how many pages are available to query:
+        firstQuery = queryPage()
+        if not 'totalPages' in firstQuery.keys():
+            #TODO: management of api response code 418 vs http response codes
+            return None
+    
+        numPages = firstQuery['totalPages']
+        print("Number of pages to query: " + str(numPages))
+        
+        if numPages == 0:
+            allResults = None        
+    
+        else:
+            #now we know how many queries to run. Run them all:
+            allResults = pd.concat([self.parseResponse(firstQuery)] + [self.parseResponse(queryPage(pageNum)) for pageNum in range(2,numPages+1)])
+        return allResults
+        
+    
+    ## Private methods:
+    
     def __queryOnce(self):
         #Run a query once, return the response
         return requests.get(self.getQueryUrl())
@@ -68,16 +115,6 @@ class SensisInterface(object):
             else:
                 raise RuntimeError('Unhandled API response code ' + str(responseCode))
         return response.json()
-
-    def runQuery(self):
-        print("QUERY: " + self.getQueryUrl())
-        response = self.__awaitQuerySuccess()
-        
-    #    #Save query in cache to avoid sending the same api query twice
-    #    queryFile = open('cache/'+buildOptsUrl(queryOptions), 'w')
-    #    queryFile.write(json.dumps(response))
-    #    queryFile.close()
-        return response
 
     def __parseListing(self, listing):
         #convert from dictionary representation of a listing to a single-row data frame of the chosen fields
@@ -112,37 +149,4 @@ class SensisInterface(object):
         parsedListingDict = {field : extractSafely(extractionFunction) for field, extractionFunction in extractionFunctions.items()}
         parsedListing = pd.DataFrame(parsedListingDict)
         return parsedListing
-    
-    def parseResponse(self, responseJson):
-        #get data frame from respose:
-        #one row per listing, one column for each field
-        #as selected in 'parseListing'
         
-        allListings = pd.concat([self.__parseListing(listing) for listing in responseJson['results']])
-        return allListings
-
-    #prepare a query function for querying multiple pages
-    def queryAllPages(self):
-        
-        def queryPage(pageNumber = 1):
-            print("Extracting page: " + str(pageNumber))
-            self.setPage(pageNumber)
-            return self.runQuery()
-            
-        #we're set up to query the api.
-        #first lets find how many pages are available to query:
-        firstQuery = queryPage()
-        if not 'totalPages' in firstQuery.keys():
-            #TODO: management of api response code 418 vs http response codes
-            return None
-    
-        numPages = firstQuery['totalPages']
-        print("Number of pages to query: " + str(numPages))
-        
-        if numPages == 0:
-            allResults = None        
-    
-        else:
-            #now we know how many queries to run. Run them all:
-            allResults = pd.concat([self.parseResponse(firstQuery)] + [self.parseResponse(queryPage(pageNum)) for pageNum in range(2,numPages+1)])
-        return allResults
