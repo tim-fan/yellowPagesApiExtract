@@ -1,6 +1,10 @@
-#yellowPagesApiExtract: pulls data from yellow pages api
-# usage: set query parameters below, then run:
-#          python3 yellowPagesApiExtract.py
+# -*- coding: utf-8 -*-
+"""
+Python interface to the Sensis API
+Created on Thu Mar 17 20:10:40 2016
+
+@author: tim
+"""
 
 import json
 import pandas as pd
@@ -9,25 +13,15 @@ import time
 import re
 import os
 
-### CONFIG ###
-
-
-
-queryOptions = {
-        'query' : 'electrical contractors',
-        'state' : 'SA',
-        'rows'  : '50' #API allows at most 50 rows per request
-}
-
-### HELPER FUNCTIONS ###
 
 class SensisInterface(object):
-    def __init__(self):
+    def __init__(self, apiKey):
         self.apiUrl = 'http://api.sensis.com.au/v1/test/search'
         
         #store options for running queries. 'rows' option will default to 50 - 
         #this is the maximum number of rows that can be requested per page
-        self.queryOptions = {'rows' : '50'}
+        self.queryOptions = {'rows' : '50',
+                             'key'  : apiKey}
         
     def setQuery(self, query):
         self.queryOptions['query'] = query
@@ -49,7 +43,7 @@ class SensisInterface(object):
     
     def __queryOnce(self):
         #Run a query once, return the response
-        return requests.get(self.getQueryUrl)
+        return requests.get(self.getQueryUrl())
         
     def __awaitQuerySuccess(self):
         #keeps running query until either a
@@ -152,36 +146,3 @@ class SensisInterface(object):
             #now we know how many queries to run. Run them all:
             allResults = pd.concat([self.parseResponse(firstQuery)] + [self.parseResponse(queryPage(pageNum)) for pageNum in range(2,numPages+1)])
         return allResults
-
-### QUERY SCRIPT ###
-
-#add api key to query options
-queryOptions['key'] = os.environ['SENSIS_API_KEY']
-
-#loop through all post codes
-postcodeData = pd.read_csv('data/Australian_Post_Codes_Lat_Lon.csv')
-postcodes = [str(pc) for pc in set(postcodeData.postcode.values)]
-
-def queryPostcodeWithOptions(postcode, apiUrl, queryOptions):
-    queryOptions['location'] = postcode
-    return queryAllPages(apiUrl, queryOptions)
-
-queryPostcode = lambda postcode : queryPostcodeWithOptions(postcode, apiUrl, queryOptions)
-
-#allPcResults = queryPostcode(postcodes[0])
-#csvName = (queryOptions['query'] + '_' + 'allPostcodes.csv').replace(' ','_')
-#
-#for postcode in postcodes[1:]:
-#    print("Querying for post code: " + str(postcode))
-#    pcResults = queryPostcode(postcode)
-#    if pcResults is not None:
-#        allPcResults = pd.concat([allPcResults, pcResults])
-#
-#        #in case of crash: save intermediate results
-#        allPcResults.to_csv(csvName, index = False)
-#
-##finally, save to a .csv file
-#print("Done! Saving to file: " + csvName)
-#allPcResults.to_csv(csvName, index = False)
-
-#Done!

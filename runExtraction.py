@@ -7,7 +7,6 @@ Created on Thu Mar 17 20:10:40 2016
 """
 
 from SensisApiInterface import SensisInterface
-import pandas as pd
 import os
 
 apiKey = os.environ['SENSIS_API_KEY']

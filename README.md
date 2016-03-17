@@ -1,7 +1,4 @@
-# yellowPagesApiExtract
-script to pull data from yellow pages api
+# SensisApiInterface 
+A module to facilitate querying the Sensis (yellow pages) API
 
-usage: set query parameters in yellowPagesApiExtract.py, then run:
-```bash
-python3 yellowPagesApiExtract.py
-```
+See 'runExtraction.py' for example usage.
