@@ -12,7 +12,7 @@ import os
 apiKey = os.environ['SENSIS_API_KEY']
 sensis = SensisInterface(apiKey)
 sensis.setQuery('Electrical Contractors')
-sensis.setState('VIC')
+sensis.setState('QLD')
 
 queryResults = sensis.queryAllPages()
 
@@ -22,7 +22,7 @@ queryResults.drop_duplicates(cols = ['Email'])
 queryResults.dropna(how = 'any', subset = ['Name', 'Email'], inplace = True)
 
 #save results
-queryResults.to_csv('electrical_contractors_VIC.csv')
+queryResults.to_csv('electrical_contractors_QLD.csv', index = False)
 
 
 
