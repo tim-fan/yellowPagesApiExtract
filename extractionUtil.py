@@ -32,9 +32,9 @@ sensis = SensisInterface(apiKey)
 sensis.setQuery(args.query)
 sensis.setState(args.state)
 
-#queryResults = sensis.queryAllPages()
-import pandas as pd
-queryResults = pd.DataFrame.from_csv('electrical_contractors_QLD.csv')
+queryResults = sensis.queryAllPages()
+#import pandas as pd
+#queryResults = pd.DataFrame.from_csv('electrical_contractors_QLD.csv')
 
 #post process
 queryResults = queryResults.drop_duplicates(cols = ['Name'])
